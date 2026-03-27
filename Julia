@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Interactive Julia Set Explorer</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: system-ui, -apple-system, sans-serif;
+    background: #f8f8f6;
+    color: #1a1a1a;
+    padding: 1.5rem;
+    max-width: 900px;
+    margin: 0 auto;
+  }
+  @media (prefers-color-scheme: dark) {
+    body { background: #1c1c1a; color: #e8e8e6; }
+    .card { background: #2a2a28; border-color: rgba(255,255,255,0.12); }
+    .coord-overlay { background: #2a2a28; border-color: rgba(255,255,255,0.12); }
+    button { background: transparent; color: #e8e8e6; border-color: rgba(255,255,255,0.25); }
+    button:hover { background: rgba(255,255,255,0.08); }
+    input[type="range"]::-webkit-slider-runnable-track { background: rgba(255,255,255,0.15); }
+    input[type="range"]::-moz-range-track { background: rgba(255,255,255,0.15); }
+    .label { color: #a0a09a; }
+    .hint { color: #706f6a; }
+  }
+  h1 { font-size: 22px; font-weight: 500; margin-bottom: 1.5rem; }
+  .card {
+    background: #fff;
+    border: 0.5px solid rgba(0,0,0,0.12);
+    border-radius: 12px;
+    padding: 1.25rem;
+    margin-bottom: 1rem;
+  }
+  .controls { display: flex; gap: 16px; flex-wrap: wrap; margin-bottom: 1rem; }
+  .control-group { flex: 1; min-width: 200px; }
+  .label { font-size: 13px; color: #6b6b66; display: block; margin-bottom: 4px; }
+  .slider-row { display: flex; align-items: center; gap: 8px; }
+  .slider-val {
+    font-size: 13px; font-weight: 500; min-width: 48px;
+    text-align: right; font-family: ui-monospace, monospace;
+  }
+  input[type="range"] {
+    flex: 1; height: 4px; -webkit-appearance: none; appearance: none;
+    background: transparent; outline: none;
+  }
+  input[type="range"]::-webkit-slider-runnable-track {
+    height: 4px; border-radius: 2px; background: rgba(0,0,0,0.12);
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none; width: 18px; height: 18px; border-radius: 50%;
+    background: #534AB7; border: 2px solid #fff; margin-top: -7px; cursor: pointer;
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,0.15);
+  }
+  input[type="range"]::-moz-range-track {
+    height: 4px; border-radius: 2px; background: rgba(0,0,0,0.12); border: none;
+  }
+  input[type="range"]::-moz-range-thumb {
+    width: 18px; height: 18px; border-radius: 50%;
+    background: #534AB7; border: 2px solid #fff; cursor: pointer;
+    box-shadow: 0 0 0 0.5px rgba(0,0,0,0.15);
+  }
+  .presets { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+  button {
+    background: transparent; border: 0.5px solid rgba(0,0,0,0.25);
+    border-radius: 8px; padding: 6px 14px; font-size: 13px;
+    cursor: pointer; color: #1a1a1a; transition: background 0.15s;
+  }
+  button:hover { background: rgba(0,0,0,0.04); }
+  button:active { transform: scale(0.98); }
+  .canvas-wrap { position: relative; margin-bottom: 8px; }
+  canvas {
+    width: 100%; border-radius: 12px;
+    border: 0.5px solid rgba(0,0,0,0.12); cursor: crosshair; display: block;
+  }
+  .coord-overlay {
+    position: absolute; bottom: 8px; right: 8px;
+    font-size: 12px; font-family: ui-monospace, monospace;
+    color: #6b6b66; background: #fff; padding: 2px 8px;
+    border-radius: 8px; border: 0.5px solid rgba(0,0,0,0.12);
+  }
+  .footer {
+    display: flex; justify-content: space-between; align-items: center;
+    flex-wrap: wrap; gap: 8px;
+  }
+  .c-display { font-size: 14px; font-weight: 500; font-family: ui-monospace, monospace; }
+  .hint { font-size: 12px; color: #a0a09a; }
+</style>
+</head>
+<body>
+
+<h1>Julia set explorer</h1>
+
+<div class="card">
+  <div class="controls">
+    <div class="control-group">
+      <label class="label">Re(c)</label>
+      <div class="slider-row">
+        <input type="range" min="-2" max="2" value="-0.7" step="0.001" id="cre" />
+        <span class="slider-val" id="crev">-0.700</span>
+      </div>
+    </div>
+    <div class="control-group">
+      <label class="label">Im(c)</label>
+      <div class="slider-row">
+        <input type="range" min="-2" max="2" value="0.27015" step="0.001" id="cim" />
+        <span class="slider-val" id="cimv">0.270</span>
+      </div>
+    </div>
+    <div class="control-group" style="min-width: 140px;">
+      <label class="label">Max iterations</label>
+      <div class="slider-row">
+        <input type="range" min="30" max="500" value="200" step="10" id="maxiter" />
+        <span class="slider-val" style="min-width: 32px;" id="maxiterv">200</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="presets">
+    <button onclick="setPreset(-0.7, 0.27015)">Classic</button>
+    <button onclick="setPreset(-0.8, 0.156)">Dendrite</button>
+    <button onclick="setPreset(0.355, 0.355)">Spiral</button>
+    <button onclick="setPreset(-0.4, 0.6)">Rabbit</button>
+    <button onclick="setPreset(0.285, 0.01)">Sea horse</button>
+    <button onclick="setPreset(-1.476, 0)">Cauliflower</button>
+    <button onclick="setPreset(-0.12, -0.77)">Siegel disc</button>
+  </div>
+
+  <div class="canvas-wrap">
+    <canvas id="jcv"></canvas>
+    <div class="coord-overlay" id="coords"></div>
+  </div>
+
+  <div class="footer">
+    <span class="c-display" id="cdisp">c = -0.700 + 0.270i</span>
+    <span class="hint" id="status"></span>
+  </div>
+</div>
+
+<p class="hint" style="margin-top: 4px;">Scroll to zoom. Click and drag to pan.</p>
+
+<script>
+const cv = document.getElementById('jcv');
+const cx = cv.getContext('2d');
+let W, H, imgData;
+let centerX = 0, centerY = 0, zoom = 1.5;
+let rendering = false, pendingRender = false;
+
+function resize() {
+  const w = cv.clientWidth;
+  const h = Math.round(w * 0.7);
+  W = w; H = h;
+  cv.width = w;
+  cv.height = h;
+  cv.style.height = h + 'px';
+  imgData = cx.createImageData(W, H);
+}
+resize();
+
+function hslToRgb(h, s, l) {
+  h /= 360; s /= 100; l /= 100;
+  let r, g, b;
+  if (s === 0) {
+    r = g = b = l;
+  } else {
+    const hue2rgb = (p, q, t) => {
+      if (t < 0) t += 1;
+      if (t > 1) t -= 1;
+      if (t < 1/6) return p + (q - p) * 6 * t;
+      if (t < 1/2) return q;
+      if (t < 2/3) return p + (q - p) * (2/3 - t) * 6;
+      return p;
+    };
+    const q = l < 0.5 ? l * (1 + s) : l + s - l * s;
+    const p = 2 * l - q;
+    r = hue2rgb(p, q, h + 1/3);
+    g = hue2rgb(p, q, h);
+    b = hue2rgb(p, q, h - 1/3);
+  }
+  return [Math.round(r * 255), Math.round(g * 255), Math.round(b * 255)];
+}
+
+function render() {
+  if (rendering) { pendingRender = true; return; }
+  rendering = true;
+  const t0 = performance.now();
+  const cre = parseFloat(document.getElementById('cre').value);
+  const cim = parseFloat(document.getElementById('cim').value);
+  const maxIter = parseInt(document.getElementById('maxiter').value);
+  const data = imgData.data;
+  const isDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+  const bgR = isDark ? 42 : 255;
+  const bgG = isDark ? 42 : 255;
+  const bgB = isDark ? 40 : 255;
+
+  for (let py = 0; py < H; py++) {
+    for (let px = 0; px < W; px++) {
+      let zr = centerX + (px - W / 2) / (W / 2) * zoom;
+      let zi = centerY + (py - H / 2) / (H / 2) * zoom * (H / W);
+      let i = 0;
+      while (i < maxIter && zr * zr + zi * zi < 4) {
+        const tmp = zr * zr - zi * zi + cre;
+        zi = 2 * zr * zi + cim;
+        zr = tmp;
+        i++;
+      }
+      const idx = (py * W + px) * 4;
+      if (i === maxIter) {
+        data[idx] = bgR;
+        data[idx + 1] = bgG;
+        data[idx + 2] = bgB;
+      } else {
+        const smooth = i + 1 - Math.log(Math.log(Math.sqrt(zr * zr + zi * zi))) / Math.log(2);
+        const hue = (smooth * 7.2 + 220) % 360;
+        const sat = 75;
+        const lit = isDark
+          ? 35 + 30 * (smooth / maxIter)
+          : 25 + 45 * (smooth / maxIter);
+        const [r, g, b] = hslToRgb(hue, sat, lit);
+        data[idx] = r;
+        data[idx + 1] = g;
+        data[idx + 2] = b;
+      }
+      data[idx + 3] = 255;
+    }
+  }
+
+  cx.putImageData(imgData, 0, 0);
+  const ms = Math.round(performance.now() - t0);
+  document.getElementById('status').textContent = ms + 'ms';
+  rendering = false;
+  if (pendingRender) { pendingRender = false; render(); }
+}
+
+function updateDisplay() {
+  const cre = parseFloat(document.getElementById('cre').value);
+  const cim = parseFloat(document.getElementById('cim').value);
+  document.getElementById('crev').textContent = cre.toFixed(3);
+  document.getElementById('cimv').textContent = cim.toFixed(3);
+  document.getElementById('maxiterv').textContent = document.getElementById('maxiter').value;
+  const sign = cim >= 0 ? '+' : '-';
+  document.getElementById('cdisp').textContent =
+    'c = ' + cre.toFixed(3) + ' ' + sign + ' ' + Math.abs(cim).toFixed(3) + 'i';
+}
+
+function setPreset(re, im) {
+  document.getElementById('cre').value = re;
+  document.getElementById('cim').value = im;
+  centerX = 0;
+  centerY = 0;
+  zoom = 1.5;
+  updateDisplay();
+  render();
+}
+
+let debounceTimer;
+function onSliderInput() {
+  updateDisplay();
+  clearTimeout(debounceTimer);
+  debounceTimer = setTimeout(render, 40);
+}
+
+document.getElementById('cre').addEventListener('input', onSliderInput);
+document.getElementById('cim').addEventListener('input', onSliderInput);
+document.getElementById('maxiter').addEventListener('input', onSliderInput);
+
+// Zoom with scroll wheel
+cv.addEventListener('wheel', function (e) {
+  e.preventDefault();
+  const rect = cv.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const wx = centerX + (mx - W / 2) / (W / 2) * zoom;
+  const wy = centerY + (my - H / 2) / (H / 2) * zoom * (H / W);
+  const factor = e.deltaY > 0 ? 1.15 : 0.87;
+  zoom *= factor;
+  centerX = wx - (mx - W / 2) / (W / 2) * zoom;
+  centerY = wy - (my - H / 2) / (H / 2) * zoom * (H / W);
+  render();
+}, { passive: false });
+
+// Pan with click-drag
+let dragging = false, lastX, lastY;
+cv.addEventListener('mousedown', function (e) {
+  dragging = true;
+  lastX = e.clientX;
+  lastY = e.clientY;
+});
+window.addEventListener('mouseup', function () { dragging = false; });
+window.addEventListener('mousemove', function (e) {
+  if (!dragging) return;
+  const dx = e.clientX - lastX;
+  const dy = e.clientY - lastY;
+  centerX -= dx / (W / 2) * zoom;
+  centerY -= dy / (H / 2) * zoom * (H / W);
+  lastX = e.clientX;
+  lastY = e.clientY;
+  render();
+});
+
+// Coordinate display on hover
+cv.addEventListener('mousemove', function (e) {
+  const rect = cv.getBoundingClientRect();
+  const mx = e.clientX - rect.left;
+  const my = e.clientY - rect.top;
+  const wx = centerX + (mx - W / 2) / (W / 2) * zoom;
+  const wy = centerY + (my - H / 2) / (H / 2) * zoom * (H / W);
+  const sign = wy >= 0 ? '+' : '-';
+  document.getElementById('coords').textContent =
+    wx.toFixed(3) + ' ' + sign + ' ' + Math.abs(wy).toFixed(3) + 'i';
+});
+
+// Responsive
+window.addEventListener('resize', function () { resize(); render(); });
+
+// Initial render
+updateDisplay();
+render();
+</script>
+
+</body>
+</html>
